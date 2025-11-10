@@ -14,6 +14,9 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
+// simple health endpoint
+app.get('/', (req, res) => res.send('BroSolve API running'));
+
 // routes
 app.use('/api/auth', authRoutes);
 app.use('/api/complaints', complaintRoutes);
@@ -31,10 +34,27 @@ const PORT = process.env.PORT || 4000;
 
 async function start() {
   try {
-    const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/brosolve';
-    await mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true });
-    console.log('Connected to MongoDB');
-    server.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+    const mongoUri = process.env.MONGO_URI;
+    if (mongoUri) {
+      await mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true });
+      console.log('Connected to MongoDB');
+    } else {
+      // try spinning up an in-memory MongoDB for convenience in this environment
+      try {
+        const { MongoMemoryServer } = require('mongodb-memory-server');
+        const mongod = await MongoMemoryServer.create();
+        const memUri = mongod.getUri();
+        await mongoose.connect(memUri, { useNewUrlParser: true, useUnifiedTopology: true });
+        console.log('Started in-memory MongoDB');
+      } catch (err) {
+        console.warn('mongodb-memory-server not available; attempting default localhost connection');
+        const fallback = process.env.FALLBACK_MONGO || 'mongodb://127.0.0.1:27017/brosolve';
+        await mongoose.connect(fallback, { useNewUrlParser: true, useUnifiedTopology: true });
+        console.log('Connected to fallback MongoDB at', fallback);
+      }
+    }
+
+    server.listen(PORT, '0.0.0.0', () => console.log(`Server listening on port ${PORT}`));
   } catch (err) {
     console.error(err);
     process.exit(1);
